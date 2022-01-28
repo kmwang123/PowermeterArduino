@@ -7,6 +7,7 @@ void startBLE(void);
 void setupBattery(void);
 void setupCSC(void);
 void startAdv(void);
-void blePublishCadence(uint8_t &cadence_rpm);
+void blePublishCadence(uint16_t crankRevs, long millisLast);
+void uint16ToLso(uint16_t val, uint8_t* out);
 
 #endif

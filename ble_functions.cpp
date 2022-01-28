@@ -41,10 +41,11 @@ BLEUnsignedCharCharacteristic batteryLevelChar(UUID16_CHR_BATTERY_LEVEL, BLERead
  *  Cadence Measurement Char    0x2A5B
  *  Cadence Feature Char:      0x2A5C
  */
+#define CSC_MEAS_CHAR_LEN 5 //the characteristic is 5 bytes long
 
 BLEService cscService(UUID16_SVC_CYCLING_SPEED_AND_CADENCE);
-BLECharacteristic cscFeatChar = BLECharacteristic(UUID16_CHR_CSC_FEATURE, BLERead, 1); // the characteristic is 1 byte long
-BLEUnsignedCharCharacteristic cscMeasChar(UUID16_CHR_CSC_MEASUREMENT, BLERead | BLENotify); // remote clients will be able to get notifications if this characteristic changes
+BLECharacteristic cscFeatChar = BLECharacteristic(UUID16_CHR_CSC_FEATURE, BLERead, sizeof(uint16_t)); // the characteristic is 16 bits long
+BLECharacteristic cscMeasChar = BLECharacteristic(UUID16_CHR_CSC_MEASUREMENT, BLERead | BLENotify, CSC_MEAS_CHAR_LEN); //remote clients will be able to get notifications if this characteristic changes
 //BLEUnsignedCharCharacteristic
 /* 
  * Pwr Service Definitions
@@ -103,12 +104,12 @@ void setupCSC(void) {
     //cscFeatChar.writeValue(?)
     //cscMeasChar.writeValue(?)
   //
-  //https://github.com/sputnikdev/bluetooth-gatt-parser/blob/master/src/main/resources/gatt/characteristic/org.bluetooth.characteristic.csc_feature.xml
+  
   //
 
 
   //
-  //https://github.com/sputnikdev/bluetooth-gatt-parser/blob/master/src/main/resources/gatt/characteristic/org.bluetooth.characteristic.csc_measurement.xml
+  ///https://www.bluetooth.com/wp-content/uploads/Sitecore-Media-Library/Gatt/Xml/Characteristics/org.bluetooth.characteristic.csc_measurement.xml
   //
 }
 
@@ -125,8 +126,70 @@ void startAdv(void) {
 //void blePublishBattery() {
 //  
 //}
-void blePublishCadence(uint8_t &cadence_rpm) {
-  byte cscfeature[1] = { 0b0000000000000010 }; // specifies that this is crank revolution data
-  byte cscmeasurement[11] = { 0b00000010, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}; 
-  cscMeasChar.writeValue(cadence_rpm);
+void blePublishCadence(uint16_t crankRevs, long millisLast) {
+  /**
+   * Fields
+   * https://github.com/oesmith/gatt-xml/blob/master/org.bluetooth.characteristic.csc_feature.xml
+   * Flags (16 bits):
+   *   b0 Wheel Revolution Data Supported
+   *   b1 Crank Revolution Data Supported
+   *   b2 Multiple Sensor Locations Supported
+   *   
+  */
+  uint16_t cscfeature = 0b0000000000000010; // flag specifies that this is crank revolution data
+  //byte cscfeature[1] = { 0b0000000000000010 }; // specifies that this is crank revolution data
+  cscFeatChar.writeValue(cscfeature);
+  
+
+  /**
+   * Fields
+   * https://github.com/oesmith/gatt-xml/blob/master/org.bluetooth.characteristic.csc_feature.xml
+   * Flags (8 bits):
+   *   b0 Wheel Revolution Data Present
+   *   b1 Crank Revolution Data Present
+   *   b2-b7 Reserved for future use
+   *
+   * Cumulative Wheel Revolutions:
+   *   uint32, field does not exist if key of bit 0 of the Flags is set to 0
+   *   
+   * Last Wheel Event Time:
+   *   uint16, field does not exist if key of bit 0 of the Flags is set to 0
+   *
+   * Cumulative Crank Revolutions
+   *  uint16, field exists if the key of bit 1 of the Flags field is set to 1
+   *  
+   * Last Crank Event Time
+   *   uint16, Field exists if the key of bit 1 of the Flags field is set to 1.
+   *   Unit has a resolution of 1/1024s
+   *   
+   *   The fields in the above table are in the order of LSO to MSO. Where LSO = Least Significant Octet and MSO =
+   *   Most Significant Octet.
+   */
+   uint8_t flag = 0b00000010; // Flag for cadence
+   
+   uint8_t cumCrankRev[2]; //split 16 bits into two 8 bit arrays, LSO is first in array
+   uint16ToLso(crankRevs, cranks);
+   
+   uint8_t lastCrankEventTime[2];
+   // Cadence last event time is time of last event, in 1/1024 second resolution
+   uint16_t lastEventTime = uint16_t(millisLast / 1000.f * 1024.f) % 65536;
+   uint16ToLso(lastEventTime, lastTime);
+   
+   uint8_t cscmeasdata[CSC_MEAS_CHAR_LEN] = { flag,
+                                              cumCrankRev[0], cumCrankRev[1],
+                                              lastCrankEventTime[0], lastCrankEventTime[1]}; 
+   cscMeasChar.writeValue(cscmeasdata);
+}
+
+/*
+ * Given a 16-bit uint16_t, convert it to 2 8-bit ints, and set
+ * them in the provided array. Assume the array is of correct
+ * size, allocated by caller. Least-significant octet is place
+ * in output array first.
+ */
+void uint16ToLso(uint16_t val, uint8_t* out) {
+  uint8_t lso = val & 0xff;
+  uint8_t mso = (val >> 8) & 0xff;
+  out[0] = lso;
+  out[1] = mso;
 }
