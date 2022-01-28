@@ -8,11 +8,6 @@
 #define BLE_DEVICE_NAME "ArduinoNano33IOT" // device name for ble scan
 #define BLE_LOCAL_NAME "Cycle Power and Cadence" // local name
 
-byte cscfeature[1] = { 0b0000000000000010 }; // specifies that this is crank revolution data
-byte cscmeasurement[11] = { 0b00000010, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}; 
-// Power variables
-String CYCLING_POWER_SERVICE = "1818";
-String CYCLING_POWER_CHAR = "2A63";
 
 // Service and character constants at:
 // https://www.bluetooth.com/specifications/gatt/services
@@ -20,29 +15,37 @@ String CYCLING_POWER_CHAR = "2A63";
 /* Service UUID
  * https://www.bluetooth.com/specifications/gatt/services
  *------------------------------------------------------------------*/
-#define UUID16_SVC_BATTERY                                    0x180F
-#define UUID16_SVC_CYCLING_SPEED_AND_CADENCE                  0x1816
-#define UUID16_SVC_CYCLING_POWER                              0x1818
+#define UUID16_SVC_BATTERY                                    "180F"
+#define UUID16_SVC_CYCLING_SPEED_AND_CADENCE                  "1816"
+#define UUID16_SVC_CYCLING_POWER                              "1818"
 
 /*------------------------------------------------------------------*/
 /* Characteristic UUID
  * https://www.bluetooth.com/specifications/gatt/characteristics
  *------------------------------------------------------------------*/
-#define UUID16_CHR_CSC_FEATURE                                0x2A5C
-#define UUID16_CHR_CSC_MEASUREMENT                            0x2A5B
+#define UUID16_CHR_BATTERY_LEVEL                              "2A19"     
+ 
+#define UUID16_CHR_CSC_FEATURE                                "2A5C"
+#define UUID16_CHR_CSC_MEASUREMENT                            "2A5B"
 
-#define UUID16_CHR_CYCLING_POWER_MEASUREMENT                  0x2A63
-#define UUID16_CHR_CYCLING_POWER_FEATURE                      0x2A65
-#define UUID16_CHR_SENSOR_LOCATION                            0x2A5D
+#define UUID16_CHR_CYCLING_POWER_MEASUREMENT                  "2A63"
+#define UUID16_CHR_CYCLING_POWER_FEATURE                      "2A65"
+#define UUID16_CHR_SENSOR_LOCATION                            "2A5D"
+
+/* Battery level Service Definitions 0x180F
+ *  Battery Level Char               0x2A19
+ */
+BLEService batteryService(UUID16_SVC_BATTERY);
+BLEUnsignedCharCharacteristic batteryLevelChar(UUID16_CHR_BATTERY_LEVEL, BLERead | BLENotify);
 /* Cadence Service Definitions 0x1816
  *  Cadence Measurement Char    0x2A5B
  *  Cadence Feature Char:      0x2A5C
  */
 
-//BLEService cscService = BLEService(UUID16_SVC_CYCLING_SPEED_AND_CADENCE);
-//BLECharacteristic cscFeatChar = BLECharacteristic(UUID16_CHR_CSC_FEATURE, BLERead, 1); // the characteristic is 1 byte long
-//BLEFloatCharacteristic cscMeasChar(UUID16_CHR_CSC_MEASUREMENT, BLERead | BLENotify, 11); // remote clients will be able to get notifications if this characteristic changes
-
+BLEService cscService(UUID16_SVC_CYCLING_SPEED_AND_CADENCE);
+BLECharacteristic cscFeatChar = BLECharacteristic(UUID16_CHR_CSC_FEATURE, BLERead, 1); // the characteristic is 1 byte long
+BLEUnsignedCharCharacteristic cscMeasChar(UUID16_CHR_CSC_MEASUREMENT, BLERead | BLENotify); // remote clients will be able to get notifications if this characteristic changes
+//BLEUnsignedCharCharacteristic
 /* 
  * Pwr Service Definitions
  *  Cycling Power Service:      0x1818
@@ -50,7 +53,7 @@ String CYCLING_POWER_CHAR = "2A63";
  *  Cycling Power Feature Char: 0x2A65
  *  Sensor Location Char:       0x2A5D
  */
-//BLEService        pwrService  = BLEService(UUID16_SVC_CYCLING_POWER);
+//BLEService        pwrService(UUID16_SVC_CYCLING_POWER);
 //BLECharacteristic pwrMeasChar = BLECharacteristic(UUID16_CHR_CYCLING_POWER_MEASUREMENT);
 //BLECharacteristic pwrFeatChar = BLECharacteristic(UUID16_CHR_CYCLING_POWER_FEATURE);
 //BLECharacteristic pwrLocChar  = BLECharacteristic(UUID16_CHR_SENSOR_LOCATION);
@@ -73,21 +76,32 @@ void startBLE(void) {
     BLE.setDeviceName(BLE_DEVICE_NAME);
     BLE.setLocalName(BLE_LOCAL_NAME);
 
+    //setupBattery();
     setupCSC();
     startAdv();
     
   }
 }
 /*
+ * Set up the battery service
+ */
+void setupBattery(void) {
+  BLE.setAdvertisedService(batteryService); // add the service UUID
+  batteryService.addCharacteristic(batteryLevelChar); // add the battery level characteristic
+  BLE.addService(batteryService); // Add the battery service
+}
+/*
  * Set up the cadence service
  */
 void setupCSC(void) {
    
-    //BLE.setAdvertisedService(cscService); 
-    //cscService.addCharacteristic(cscFeatChar); 
-    //cscService.addCharacteristic(cscMeasChar); 
-    //BLE.addService(cscService); 
-
+    BLE.setAdvertisedService(cscService); 
+    cscService.addCharacteristic(cscFeatChar); 
+    cscService.addCharacteristic(cscMeasChar); 
+    BLE.addService(cscService); 
+    // do i need to initialize these?
+    //cscFeatChar.writeValue(?)
+    //cscMeasChar.writeValue(?)
   //
   //https://github.com/sputnikdev/bluetooth-gatt-parser/blob/master/src/main/resources/gatt/characteristic/org.bluetooth.characteristic.csc_feature.xml
   //
@@ -104,6 +118,15 @@ void startAdv(void) {
      until it receives a new connection */
 
    // start advertising
-   //BLE.advertise();
-   //Serial.println("Bluetooth device active, waiting for connections...");
+   BLE.advertise();
+   Serial.println("Bluetooth device active, waiting for connections...");
+}
+
+//void blePublishBattery() {
+//  
+//}
+void blePublishCadence(uint8_t &cadence_rpm) {
+  byte cscfeature[1] = { 0b0000000000000010 }; // specifies that this is crank revolution data
+  byte cscmeasurement[11] = { 0b00000010, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}; 
+  cscMeasChar.writeValue(cadence_rpm);
 }

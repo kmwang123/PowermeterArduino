@@ -24,15 +24,12 @@ void startIMU() {
   Serial.println("Acceleration in G's");
   Serial.println("X\tY\tZ\twz");
 }
-float read_gyroscope() {
+void read_gyroscope(uint8_t &cadence_rpm) {
   if (IMU.gyroscopeAvailable()) {
       float wx, wy, wz;
-      float cadence_rpm;
       IMU.readGyroscope(wx, wy, wz);
       //converts from deg/s to rpm
       cadence_rpm = wz*(1./6);
-      //cadenceMovingAvg = filter.addSample(rpm_value);
-      return cadence_rpm;
     }
 }
 
