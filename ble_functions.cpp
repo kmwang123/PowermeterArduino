@@ -138,7 +138,7 @@ void blePublishCadence(uint16_t crankRevs, long millisLast) {
   */
   uint16_t cscfeature = 0b0000000000000010; // flag specifies that this is crank revolution data
   //byte cscfeature[1] = { 0b0000000000000010 }; // specifies that this is crank revolution data
-  cscFeatChar.writeValue(cscfeature);
+  cscFeatChar.writeValue(cscfeature, sizeof(uint16_t));
   
 
   /**
@@ -168,17 +168,17 @@ void blePublishCadence(uint16_t crankRevs, long millisLast) {
    uint8_t flag = 0b00000010; // Flag for cadence
    
    uint8_t cumCrankRev[2]; //split 16 bits into two 8 bit arrays, LSO is first in array
-   uint16ToLso(crankRevs, cranks);
+   uint16ToLso(crankRevs, cumCrankRev);
    
    uint8_t lastCrankEventTime[2];
    // Cadence last event time is time of last event, in 1/1024 second resolution
    uint16_t lastEventTime = uint16_t(millisLast / 1000.f * 1024.f) % 65536;
-   uint16ToLso(lastEventTime, lastTime);
+   uint16ToLso(lastEventTime, lastCrankEventTime);
    
-   uint8_t cscmeasdata[CSC_MEAS_CHAR_LEN] = { flag,
-                                              cumCrankRev[0], cumCrankRev[1],
-                                              lastCrankEventTime[0], lastCrankEventTime[1]}; 
-   cscMeasChar.writeValue(cscmeasdata);
+   unsigned char cscmeasdata[CSC_MEAS_CHAR_LEN] = { flag,
+                                                    cumCrankRev[0], cumCrankRev[1],
+                                                    lastCrankEventTime[0], lastCrankEventTime[1]}; 
+   cscMeasChar.writeValue(cscmeasdata, CSC_MEAS_CHAR_LEN);
 }
 
 /*

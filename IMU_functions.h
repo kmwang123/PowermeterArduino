@@ -4,7 +4,7 @@
 #include <Arduino_LSM6DS3.h>
 
 void startIMU();
-void read_gyroscope(uint8_t &cadence_rpm);
+float read_gyroscope(volatile uint8_t &newZrotDataReady);
 void read_accelerometer(float &x, float &y, float &z);
 
 #endif

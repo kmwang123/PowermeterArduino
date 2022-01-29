@@ -24,12 +24,16 @@ void startIMU() {
   Serial.println("Acceleration in G's");
   Serial.println("X\tY\tZ\twz");
 }
-void read_gyroscope(uint8_t &cadence_rpm) {
+
+float read_gyroscope(volatile uint8_t &newZrotDataReady) {
   if (IMU.gyroscopeAvailable()) {
-      float wx, wy, wz;
+      /* Get new sensor events with the readings */
+      float wz_radps, wx, wy, wz;
       IMU.readGyroscope(wx, wy, wz);
-      //converts from deg/s to rpm
-      cadence_rpm = wz*(1./6);
+      //converts from deg/s to rad/s
+      wz_radps = abs(wz*(PI/180.0)); //absolute value so can rotate either way
+      newZrotDataReady++;
+      return wz_radps;
     }
 }
 
