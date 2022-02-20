@@ -41,7 +41,7 @@ BLEUnsignedCharCharacteristic batteryLevelChar(UUID16_CHR_BATTERY_LEVEL, BLERead
  *  Cadence Measurement Char    0x2A5B
  *  Cadence Feature Char:      0x2A5C
  */
-#define CSC_MEAS_CHAR_LEN 5 //the characteristic is 5 bytes long
+#define CSC_MEAS_CHAR_LEN 5 //the characteristic is 5 bytes long, 11 if there is speed data
 
 BLEService cscService(UUID16_SVC_CYCLING_SPEED_AND_CADENCE);
 BLECharacteristic cscFeatChar = BLECharacteristic(UUID16_CHR_CSC_FEATURE, BLERead, sizeof(uint16_t)); // the characteristic is 16 bits long
@@ -54,10 +54,11 @@ BLECharacteristic cscMeasChar = BLECharacteristic(UUID16_CHR_CSC_MEASUREMENT, BL
  *  Cycling Power Feature Char: 0x2A65
  *  Sensor Location Char:       0x2A5D
  */
-//BLEService        pwrService(UUID16_SVC_CYCLING_POWER);
-//BLECharacteristic pwrMeasChar = BLECharacteristic(UUID16_CHR_CYCLING_POWER_MEASUREMENT);
-//BLECharacteristic pwrFeatChar = BLECharacteristic(UUID16_CHR_CYCLING_POWER_FEATURE);
-//BLECharacteristic pwrLocChar  = BLECharacteristic(UUID16_CHR_SENSOR_LOCATION);
+#define PWR_MEAS_CHAR_LEN 8 //characteristic is 8 bytes long
+BLEService        pwrService(UUID16_SVC_CYCLING_POWER);
+BLECharacteristic pwrFeatChar = BLECharacteristic(UUID16_CHR_CYCLING_POWER_FEATURE, BLERead, sizeof(uint32_t));
+BLECharacteristic pwrLocChar  = BLECharacteristic(UUID16_CHR_SENSOR_LOCATION, BLERead, sizeof(uint8_t));
+BLECharacteristic pwrMeasChar = BLECharacteristic(UUID16_CHR_CYCLING_POWER_MEASUREMENT, BLERead | BLENotify, PWR_MEAS_CHAR_LEN);
 //BLECharacteristic pwrVector   = BLECharacteristic(UUID16_CHR_CYCLING_POWER_VECTOR);
 
 
@@ -127,7 +128,7 @@ void startAdv(void) {
 //  
 //}
 void blePublishCadence(uint16_t crankRevs, long millisLast) {
-  /**
+  /** CSC Feature
    * Fields
    * https://github.com/oesmith/gatt-xml/blob/master/org.bluetooth.characteristic.csc_feature.xml
    * Flags (16 bits):
@@ -136,12 +137,12 @@ void blePublishCadence(uint16_t crankRevs, long millisLast) {
    *   b2 Multiple Sensor Locations Supported
    *   
   */
-  uint16_t cscfeature = 0b0000000000000010; // flag specifies that this is crank revolution data
-  //byte cscfeature[1] = { 0b0000000000000010 }; // specifies that this is crank revolution data
+  uint16_t cscfeature = 0b0000000000000011; // flag specifies both crank and wheel revolution data present
+  //uint16_t cscfeature = 0b0000000000000010; // flag specifies that this is crank revolution data
   cscFeatChar.writeValue(cscfeature, sizeof(uint16_t));
   
 
-  /**
+  /** CSC Measurement
    * Fields
    * https://github.com/oesmith/gatt-xml/blob/master/org.bluetooth.characteristic.csc_feature.xml
    * Flags (8 bits):
@@ -165,7 +166,14 @@ void blePublishCadence(uint16_t crankRevs, long millisLast) {
    *   The fields in the above table are in the order of LSO to MSO. Where LSO = Least Significant Octet and MSO =
    *   Most Significant Octet.
    */
+   //uint8_t flag = 0b00000011; // Flag for cadence
    uint8_t flag = 0b00000010; // Flag for cadence
+
+   // do not output any speed data
+   //uint8_t wheelRev1[2];
+   //uint8_t wheelRev2[2];
+   //uint16ToLso(0, wheelRev1);
+   //uint16ToLso(0, wheelRev2);
    
    uint8_t cumCrankRev[2]; //split 16 bits into two 8 bit arrays, LSO is first in array
    uint16ToLso(crankRevs, cumCrankRev);
@@ -174,11 +182,102 @@ void blePublishCadence(uint16_t crankRevs, long millisLast) {
    // Cadence last event time is time of last event, in 1/1024 second resolution
    uint16_t lastEventTime = uint16_t(millisLast / 1000.f * 1024.f) % 65536;
    uint16ToLso(lastEventTime, lastCrankEventTime);
-   
+
+   //unsigned char cscmeasdata[CSC_MEAS_CHAR_LEN] = { flag, wheelRev1[0], wheelRev1[1], wheelRev2[0],
+   //                                                 wheelRev2[1], lastCrankEventTime[0], lastCrankEventTime[1],
+   //                                                 cumCrankRev[0], cumCrankRev[1],
+   //                                                 lastCrankEventTime[0], lastCrankEventTime[1]}; 
    unsigned char cscmeasdata[CSC_MEAS_CHAR_LEN] = { flag,
                                                     cumCrankRev[0], cumCrankRev[1],
                                                     lastCrankEventTime[0], lastCrankEventTime[1]}; 
    cscMeasChar.writeValue(cscmeasdata, CSC_MEAS_CHAR_LEN);
+}
+
+/*
+ * Publish the instantaneous power measurement.
+ */
+void blePublishPower(int16_t instantPwr, uint16_t crankRevs, long millisLast) {
+  /** Power feature
+   * Fields
+   * https://github.com/sputnikdev/bluetooth-gatt-parser/blob/master/src/main/resources/gatt/characteristic/org.bluetooth.characteristic.cycling_power_feature.xml
+   * Flags (32 bits):
+   *   b0 Pedal Power Balance Supported
+   *   b1 Accumulated Torque Supported
+   *   b2 Wheel Revolution Data Supported
+   *   b3 Crank Revolution Data Supported
+   *   ... don't need these
+   *   
+  */
+  uint32_t pwrfeature = 0b00000000000000000000000000001000; // flag specifies crank revolution data is supported
+  pwrFeatChar.writeValue(pwrfeature, sizeof(uint32_t));
+
+  /** Power Location characteristic
+   * Fields
+   * https://github.com/oesmith/gatt-xml/blob/master/org.bluetooth.characteristic.sensor_location.xml
+   * Flags (8 bits):
+   *   <Enumeration key="5" value="Left Crank" />
+   *   
+  */
+  uint8_t pwrlocation = 0b00000111; // flag specifies sensor location is on left crank
+  pwrLocChar.writeValue(pwrlocation, sizeof(uint8_t));
+  
+  
+  /** Power measure characteristic
+   * Fields
+   *
+   * Flags (16 bits):
+   *   b0 pedal power balance present
+   *   b1 pedal power balance reference
+   *   b2 accumulated torque present
+   *   b3 accumulated torque source
+   *   b4 wheel revolution data present
+   *   b5 crank revolution data present
+   *   b6 extreme force magnitudes present
+   *   b7 extreme torque magnitudes present
+   *   b8 extreme angles present
+   *   b9 top dead spot angle present
+   *   b10 bottom dead spot angle present
+   *   b11 accumulated energy present
+   *   b12 offset compenstation indicator
+   *   b13 reserved
+   *
+   *   https://github.com/sputnikdev/bluetooth-gatt-parser/blob/master/src/main/resources/gatt/characteristic/org.bluetooth.characteristic.cycling_power_measurement.xml
+   * 
+   * Instananous Power:
+   *   16 bits signed int
+   *   
+   * Cumulative Crank Revolutions:
+   *   16 bits signed int
+   *
+   * Last Crank Event Time
+   *   16 bits signed int
+   */
+   // Flag cadence for power measurement
+   uint16_t flag = 0b0000000000100000;
+   uint8_t flags[2];
+   uint16ToLso(flag, flags);
+
+   // instantaneous power data
+   uint8_t pwr[2];
+   uint16ToLso(instantPwr, pwr);
+
+   uint8_t cumCrankRev[2]; //split 16 bits into two 8 bit arrays, LSO is first in array
+   uint16ToLso(crankRevs, cumCrankRev);
+   
+   uint8_t lastCrankEventTime[2];
+   // Cadence last event time is time of last event, in 1/1024 second resolution
+   uint16_t lastEventTime = uint16_t(millisLast / 1000.f * 1024.f) % 65536;
+   uint16ToLso(lastEventTime, lastCrankEventTime);
+
+   unsigned char pwrmeasdata[PWR_MEAS_CHAR_LEN] = { flags[0], flags[1],
+                                                    pwr[0], pwr[1], 
+                                                    cumCrankRev[0], cumCrankRev[1],
+                                                    lastCrankEventTime[0], lastCrankEventTime[1]}; 
+   pwrMeasChar.writeValue(pwrmeasdata, PWR_MEAS_CHAR_LEN);
+  
+
+
+
 }
 
 /*

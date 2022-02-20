@@ -1,13 +1,15 @@
 
 /*
   Karen's Powermeter code
+  Based off of code written by tbressers:
+  https://gitlab.com/tbressers/power/-/blob/master/power.ino
 */
 
 #include <Arduino.h>
+#include "HX711.h"
 #include "ble_functions.h"
 #include "IMU_functions.h"
-//#include <ArduinoBLE.h> //comment out later
-
+#include "loadcell_functions.h"
 // If the number of radians per seconds is less than this, we assume the user stopped pedaling
 #define STAND_STILL_RAD_PER_SEC (0.25 * PI)
 // Interval for publishing the cadence and power to bluetooth when not pedaling
@@ -17,9 +19,14 @@
 // The HX711 rate is 10 Hz, and the HX711 library smoothens the data over the last 32 samples = 3.2 seconds  CHECK THIS!
 // and we assume that this 3.2 seconds is the slowest cycle possible (for which we still want all measurements)
 #define CRANK_MINIMUM_ROTATION_TIME 1000
+#define CRANK_RADIUS 0.1725 // meters
+
+// HX711 constructor:
+HX711 LoadCell;
 
 // Bluetooth
 bool show_values=true; // print raw values
+bool startup = true; //blinking if first start
 
 // CSC variables
 // Last measured/calculated values 
@@ -27,6 +34,8 @@ static float totalCrankRevs = 0;
 float wz;   // angular veloctiy in radians per second
 float x, y, z;
 
+// Power variables
+float force;
 
 // Interrupt related variables (must be volatile)
 volatile uint8_t newZrotDataReady = 0;
@@ -38,8 +47,9 @@ void setup() {
   // run the Nano without it being connected to
   // a PC/Mac/Linux with a microusb cable.
   while (!Serial);
-  startIMU(); // begin IMU initialization
-  startBLE(); // begin BLE initialization
+  startIMU();      // begin IMU initialization
+  loadCellSetup(LoadCell); // begin HX711 load cell initialization
+  startBLE();      // begin BLE initialization
 
   Serial.println("Setup completed.\n\n");
   Serial.println("Enter 'h' for help.\n\n");
@@ -55,13 +65,23 @@ void loop() {
     Serial.print("Connected to central: ");
     // print the central's BT address:
     Serial.println(central.address());
-    // turn on the LED to indicate the connection:
-    digitalWrite(LED_BUILTIN, HIGH);
+    // blink LED five times to indicate the connection:
+    if (startup) {
+      startup = false;
+      for (int i = 0; i <= 5; i++) {
+        digitalWrite(LED_BUILTIN, HIGH);   // turn the LED on (HIGH is the voltage level)
+        delay(500);                       // wait for a second
+        digitalWrite(LED_BUILTIN, LOW);    // turn the LED off by making the voltage LOW
+        delay(500);                       // wait for a second
+      }
+    }
 
     while (central.connected()) {
       // Delay to wait for enough input, since we have a limited transmission buffer
       delay(200);
       static float wz_avg; // moving average wz
+      static float force_avg;
+      static float power;
       static bool pedaling = false;
 
       // Initialize timers
@@ -69,10 +89,10 @@ void loop() {
       static long lastStopMessage = millis();
       static long lastBluetoothUpdate = millis();
 
-      
       wz = read_gyroscope(newZrotDataReady);
       read_accelerometer(x, y, z);
       wz_avg = moving_average_cadence(wz);
+      
       //Serial.println(x +'\t' + y + '\t' + z + '\t' + wz);
      
       // Check if we stopped pedaling
@@ -88,7 +108,11 @@ void loop() {
           blePublishCadence((long)totalCrankRevs+0.5, millis()); // zero power, no cadence (resend same totalCrankRevs)
           if (show_values) {
             Serial.print(wz_avg); 
-            Serial.println(" rad/s"); 
+            Serial.print(" rad/s, "); 
+            Serial.print(force_avg); 
+            Serial.print(" N, ");
+            Serial.print(power); 
+            Serial.println(" W"); 
           }
         }  
       }
@@ -97,12 +121,20 @@ void loop() {
           pedaling = true;
           // We only calculate values if we have sufficient force-measurements (HX711 measures at 10 Hz)-> CHECK THIS!
           if ((millis() - lastMeasurement) >= CRANK_MINIMUM_ROTATION_TIME) { 
-
+            // compute the power
+            force = getForce(LoadCell);
+            force_avg = moving_average_force(force);
+            power = compute_power(wz_avg, force_avg);
+            
             if (show_values) {
               Serial.print(wz_avg); 
               Serial.print(" rad/s, ");
               Serial.print(totalCrankRevs); 
-              Serial.println(" revs");
+              Serial.print(" revs, ");
+              Serial.print(force_avg); 
+              Serial.print(" N, "); 
+              Serial.print(power); 
+              Serial.println(" W");
             }
             // Reset Zrot measurement counter
             newZrotDataReady = 0;
@@ -130,6 +162,17 @@ void loop() {
   }
 }
 
+float compute_power(float wz_avg, float force_avg) {
+  float torque = 0;
+  float power = 0;
+
+  torque = CRANK_RADIUS * force_avg; // r x F
+  // Need to multiply by 2 since we only have one sensor on one crank
+  power = 2 * torque * wz_avg;
+
+  return power;
+}
+
 float moving_average_cadence(float value) {
   const int nvalues = 256;            // At least the maximum number of values (#ZrotData) per crank-rotation 
  //const int nvalues = 3;            // Average over the last 3 crank-rotations
@@ -155,8 +198,8 @@ float moving_average_cadence(float value) {
   return sum/cvalues;
 }
 
-float moving_average_power(float value) { 
- const int nvalues = 3;            // Average over the last 3 crank-rotations
+float moving_average_force(float value) { 
+ const int nvalues = 32;            // Average over the last 3 crank-rotations
   static int current = 0;            // Index for current value
   static int cvalues = 0;            // Count of values read (<= nvalues)
   static float sum = 0;               // Rolling sum
