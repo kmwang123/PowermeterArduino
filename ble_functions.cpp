@@ -80,6 +80,7 @@ void startBLE(void) {
 
     //setupBattery();
     setupCSC();
+    setupPWR();
     startAdv();
     
   }
@@ -112,6 +113,18 @@ void setupCSC(void) {
   //
   ///https://www.bluetooth.com/wp-content/uploads/Sitecore-Media-Library/Gatt/Xml/Characteristics/org.bluetooth.characteristic.csc_measurement.xml
   //
+}
+
+/*
+ * Set up the cadence service
+ */
+void setupPWR(void) {
+   
+    BLE.setAdvertisedService(pwrService); 
+    pwrService.addCharacteristic(pwrFeatChar); 
+    pwrService.addCharacteristic(pwrLocChar); 
+    pwrService.addCharacteristic(pwrMeasChar);
+    BLE.addService(pwrService); 
 }
 
 void startAdv(void) {

@@ -106,6 +106,7 @@ void loop() {
           lastStopMessage = millis();
           // We are not pedaling. Report this to the bluetooth host
           blePublishCadence((long)totalCrankRevs+0.5, millis()); // zero power, no cadence (resend same totalCrankRevs)
+          blePublishPower( 0, totalCrankRevs, millis());
           if (show_values) {
             Serial.print(wz_avg); 
             Serial.print(" rad/s, "); 
@@ -125,17 +126,7 @@ void loop() {
             force = getForce(LoadCell);
             force_avg = moving_average_force(force);
             power = compute_power(wz_avg, force_avg);
-            
-            if (show_values) {
-              Serial.print(wz_avg); 
-              Serial.print(" rad/s, ");
-              Serial.print(totalCrankRevs); 
-              Serial.print(" revs, ");
-              Serial.print(force_avg); 
-              Serial.print(" N, "); 
-              Serial.print(power); 
-              Serial.println(" W");
-            }
+          
             // Reset Zrot measurement counter
             newZrotDataReady = 0;
             // Reset the timer
@@ -147,8 +138,20 @@ void loop() {
           // Estimate crank revolutions since last bluetooth-update from the last gyroscope crank-speed measurements (wz_avg)
           float crankRevAdd = ((millis() - lastBluetoothUpdate)/1000.f) * (wz_avg / (2 * PI));
           if (crankRevAdd >= 1.0) {
+              //print values for testing
+              if (show_values) {
+                Serial.print(wz_avg); 
+                Serial.print(" rad/s, ");
+                Serial.print(totalCrankRevs); 
+                Serial.print(" revs, ");
+                Serial.print(force_avg); 
+                Serial.print(" N, "); 
+                Serial.print(power); 
+                Serial.println(" W");
+              }
               totalCrankRevs = totalCrankRevs + crankRevAdd;
-              blePublishCadence((long)totalCrankRevs+0.5, millis());
+              blePublishCadence(totalCrankRevs, millis());
+              blePublishPower( power, totalCrankRevs, millis());
               // Reset timer
               lastBluetoothUpdate = millis();
           }

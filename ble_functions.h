@@ -6,6 +6,7 @@
 void startBLE(void);
 void setupBattery(void);
 void setupCSC(void);
+void setupPWR(void);
 void startAdv(void);
 void blePublishCadence(uint16_t crankRevs, long millisLast);
 void blePublishPower(int16_t instantPwr, uint16_t crankRevs, long millisLast);
