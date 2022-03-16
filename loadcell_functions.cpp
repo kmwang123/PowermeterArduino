@@ -16,18 +16,18 @@
  *  (defined in main file)
  */
 // HX711 pins
-#define HX711_DOUT  2
-#define HX711_CLK  3
-#define LOAD_OFFSET 168151.f
-#define HX711_MULT  7050.0
+#define HX711_DOUT  3
+#define HX711_CLK  2
+#define LOAD_OFFSET -89459.f
+#define HX711_MULT  929.0
 
 // How many raw readings to take each sample.
-#define NUM_RAW_SAMPLES 1
+#define NUM_RAW_SAMPLES 10
 
 
 void loadCellSetup(HX711 &LoadCell) {
-  Serial.println();
-  Serial.println("Starting-up loadcell HX711...");
+  //Serial.println();
+  //Serial.println("Starting-up loadcell HX711...");
 
   LoadCell.begin(HX711_DOUT, HX711_CLK);
   
@@ -39,10 +39,10 @@ void loadCellSetup(HX711 &LoadCell) {
   float offset = LOAD_OFFSET;      
   LoadCell.set_offset(offset);
   
-  Serial.print("Load offset set to: ");
-  Serial.println(LOAD_OFFSET);
-  Serial.print("Load multiplier set to: "); 
-  Serial.println(HX711_MULT);
+//  Serial.print("Load offset set to: ");
+//  Serial.println(LOAD_OFFSET);
+//  Serial.print("Load multiplier set to: "); 
+//  Serial.println(HX711_MULT);
 
   LoadCell.power_up();
 }

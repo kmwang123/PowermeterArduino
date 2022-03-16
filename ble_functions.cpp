@@ -1,13 +1,13 @@
 #include "ble_functions.h"
 #include <Arduino.h> //include this if you're using arduino 
 #include <ArduinoBLE.h> // bluetooth functionality
+
 /*
  *  BLUETOOTH
  */
 
-#define BLE_DEVICE_NAME "ArduinoNano33IOT" // device name for ble scan
+#define BLE_DEVICE_NAME "ArduinoNanoBLE33" // device name for ble scan
 #define BLE_LOCAL_NAME "Cycle Power and Cadence" // local name
-
 
 // Service and character constants at:
 // https://www.bluetooth.com/specifications/gatt/services
@@ -32,11 +32,6 @@
 #define UUID16_CHR_CYCLING_POWER_FEATURE                      "2A65"
 #define UUID16_CHR_SENSOR_LOCATION                            "2A5D"
 
-/* Battery level Service Definitions 0x180F
- *  Battery Level Char               0x2A19
- */
-BLEService batteryService(UUID16_SVC_BATTERY);
-BLEUnsignedCharCharacteristic batteryLevelChar(UUID16_CHR_BATTERY_LEVEL, BLERead | BLENotify);
 /* Cadence Service Definitions 0x1816
  *  Cadence Measurement Char    0x2A5B
  *  Cadence Feature Char:      0x2A5C
@@ -61,30 +56,32 @@ BLECharacteristic pwrLocChar  = BLECharacteristic(UUID16_CHR_SENSOR_LOCATION, BL
 BLECharacteristic pwrMeasChar = BLECharacteristic(UUID16_CHR_CYCLING_POWER_MEASUREMENT, BLERead | BLENotify, PWR_MEAS_CHAR_LEN);
 //BLECharacteristic pwrVector   = BLECharacteristic(UUID16_CHR_CYCLING_POWER_VECTOR);
 
+/* Battery level Service Definitions 0x180F
+ *  Battery Level Char               0x2A19
+ */
+BLEService batteryService(UUID16_SVC_BATTERY);
+BLECharacteristic batteryLevelChar(UUID16_CHR_BATTERY_LEVEL, BLERead, sizeof(uint8_t));
+//BLEUnsignedCharCharacteristic batteryLevelChar(UUID16_CHR_BATTERY_LEVEL, BLERead | BLENotify);
 
+/*
+ * Start bluetooth services
+ */
 void startBLE(void) {
-  if (!BLE.begin())
-  {
+  if (!BLE.begin()) {
     Serial.println("starting BLE failed!");
     while (1);
   }
-  else {
+  
     
-    /* Set a local name for the BLE device
-     This name will appear in advertising packets
-     and can be used by remote devices to identify this BLE device
-     The name can be changed but maybe be truncated based on space left in advertisement packet
-    */
-    BLE.setDeviceName(BLE_DEVICE_NAME);
-    BLE.setLocalName(BLE_LOCAL_NAME);
-
-    //setupBattery();
-    setupCSC();
-    setupPWR();
-    startAdv();
-    
-  }
+  BLE.setDeviceName(BLE_DEVICE_NAME); //Set device and local name for the BLE device
+  BLE.setLocalName(BLE_LOCAL_NAME);
+  setupCSC();
+  setupPWR();
+  //setupBattery();
+  BLE.advertise();
+  Serial.println("Bluetooth device active, waiting for connections...");
 }
+
 /*
  * Set up the battery service
  */
@@ -102,21 +99,13 @@ void setupCSC(void) {
     cscService.addCharacteristic(cscFeatChar); 
     cscService.addCharacteristic(cscMeasChar); 
     BLE.addService(cscService); 
-    // do i need to initialize these?
-    //cscFeatChar.writeValue(?)
-    //cscMeasChar.writeValue(?)
-  //
-  
-  //
-
-
-  //
-  ///https://www.bluetooth.com/wp-content/uploads/Sitecore-Media-Library/Gatt/Xml/Characteristics/org.bluetooth.characteristic.csc_measurement.xml
-  //
+    // initialize values
+    //uint16_t cscfeature = 0b0000000000000010; // flag specifies that this is crank revolution data
+    //cscFeatChar.writeValue(cscfeature, sizeof(uint16_t));
+    //blePublishCadence(0.0, millis());
 }
-
 /*
- * Set up the cadence service
+ * Set up the power service
  */
 void setupPWR(void) {
    
@@ -127,21 +116,8 @@ void setupPWR(void) {
     BLE.addService(pwrService); 
 }
 
-void startAdv(void) {
-    /* Start advertising BLE.  It will start continuously transmitting BLE
-     advertising packets and will be visible to remote BLE central devices
-     until it receives a new connection */
 
-   // start advertising
-   BLE.advertise();
-   Serial.println("Bluetooth device active, waiting for connections...");
-}
-
-//void blePublishBattery() {
-//  
-//}
-void blePublishCadence(uint16_t crankRevs, long millisLast) {
-  /** CSC Feature
+/** CSC Feature
    * Fields
    * https://github.com/oesmith/gatt-xml/blob/master/org.bluetooth.characteristic.csc_feature.xml
    * Flags (16 bits):
@@ -149,9 +125,9 @@ void blePublishCadence(uint16_t crankRevs, long millisLast) {
    *   b1 Crank Revolution Data Supported
    *   b2 Multiple Sensor Locations Supported
    *   
-  */
-  uint16_t cscfeature = 0b0000000000000011; // flag specifies both crank and wheel revolution data present
-  //uint16_t cscfeature = 0b0000000000000010; // flag specifies that this is crank revolution data
+*/
+void blePublishCadence(uint16_t crankRevs, long millisLast) {
+  uint16_t cscfeature = 0b0000000000000010; // flag specifies that this is crank revolution data
   cscFeatChar.writeValue(cscfeature, sizeof(uint16_t));
   
 
@@ -179,14 +155,7 @@ void blePublishCadence(uint16_t crankRevs, long millisLast) {
    *   The fields in the above table are in the order of LSO to MSO. Where LSO = Least Significant Octet and MSO =
    *   Most Significant Octet.
    */
-   //uint8_t flag = 0b00000011; // Flag for cadence
    uint8_t flag = 0b00000010; // Flag for cadence
-
-   // do not output any speed data
-   //uint8_t wheelRev1[2];
-   //uint8_t wheelRev2[2];
-   //uint16ToLso(0, wheelRev1);
-   //uint16ToLso(0, wheelRev2);
    
    uint8_t cumCrankRev[2]; //split 16 bits into two 8 bit arrays, LSO is first in array
    uint16ToLso(crankRevs, cumCrankRev);
@@ -196,10 +165,6 @@ void blePublishCadence(uint16_t crankRevs, long millisLast) {
    uint16_t lastEventTime = uint16_t(millisLast / 1000.f * 1024.f) % 65536;
    uint16ToLso(lastEventTime, lastCrankEventTime);
 
-   //unsigned char cscmeasdata[CSC_MEAS_CHAR_LEN] = { flag, wheelRev1[0], wheelRev1[1], wheelRev2[0],
-   //                                                 wheelRev2[1], lastCrankEventTime[0], lastCrankEventTime[1],
-   //                                                 cumCrankRev[0], cumCrankRev[1],
-   //                                                 lastCrankEventTime[0], lastCrankEventTime[1]}; 
    unsigned char cscmeasdata[CSC_MEAS_CHAR_LEN] = { flag,
                                                     cumCrankRev[0], cumCrankRev[1],
                                                     lastCrankEventTime[0], lastCrankEventTime[1]}; 
@@ -291,6 +256,19 @@ void blePublishPower(int16_t instantPwr, uint16_t crankRevs, long millisLast) {
 
 
 
+}
+  
+
+/** Battery Service
+   * Fields
+   * https://github.com/sputnikdev/bluetooth-gatt-parser/blob/master/src/main/resources/gatt/characteristic/org.bluetooth.characteristic.battery_level.xml
+   * Flags (8 bits): uint8 representing battery percentage
+   *   
+  */
+void blePublishBattery(uint8_t batPercent) {
+
+  batteryLevelChar.writeValue(batPercent); // and update the battery level characteristic
+  
 }
 
 /*
